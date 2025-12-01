@@ -131,7 +131,7 @@
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-org/ansible-infrastructure.git
+git clone https://github.com/larctorn1/ansible-infrastructure.git
 cd ansible-infrastructure
 ```
 
@@ -554,44 +554,4 @@ ansible-playbook -i azure_rm.yml infrastructure.yml
 ansible-playbook -i gcp_compute.yml infrastructure.yml
 ```
 
-## 🎓 Best Practices
 
-1. **Always use version control** for your Ansible code
-2. **Test in staging** before production deployment
-3. **Use Ansible Vault** for sensitive data
-4. **Implement idempotency** in all tasks
-5. **Document everything** in comments and README
-6. **Use roles** for reusability
-7. **Tag your playbooks** for selective execution
-8. **Monitor your deployments** with metrics
-9. **Implement rollback** procedures
-10. **Regular backups** and disaster recovery testing
-
-## 🤝 Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-## 📄 License
-
-This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
-
-## 👥 Authors
-
-- DevOps Team - *Initial work*
-
-## 🙏 Acknowledgments
-
-- Ansible community
-- DevOps best practices
-- Cloud provider documentation
-
-## 📞 Support
-
-- **Documentation**: [docs/](docs/)
-- **Issues**: GitHub Issues
-- **Slack**: #devops channel
-- **Email**: devops@example.com
-
----
-
-**Made with ❤️ by DevOps Team**
