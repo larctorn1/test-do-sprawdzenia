@@ -1,0 +1,473 @@
+---
+################################################################################
+#                                                                              #
+#  🎯 ADVANCED ANSIBLE DEPLOYMENT PLAYBOOK                                    #
+#  Features: Zero-downtime, Canary deployments, Health checks, Rollback       #
+#                                                                              #
+################################################################################
+
+- name: "🚀 Advanced Blue-Green Deployment with Canary Release"
+  hosts: web_tier
+  serial: 1  # Deploy one server at a time
+  max_fail_percentage: 20
+  any_errors_fatal: false
+  
+  vars:
+    app_version: "{{ lookup('env', 'APP_VERSION') | default('latest', true) }}"
+    deployment_strategy: "blue_green"  # blue_green, canary, rolling
+    canary_percentage: 10
+    health_check_retries: 30
+    health_check_delay: 10
+    rollback_on_failure: true
+    
+    # Feature flags
+    features:
+      enable_new_api: "{{ lookup('env', 'FEATURE_NEW_API') | default('false', true) }}"
+      enable_caching: "{{ lookup('env', 'FEATURE_CACHE') | default('true', true) }}"
+      maintenance_mode: false
+      
+  pre_tasks:
+    - name: "📋 Pre-Deployment Checks"
+      block:
+        - name: "Verify connectivity to all hosts"
+          ping:
+          
+        - name: "Check disk space"
+          shell: df -h / | tail -1 | awk '{print $5}' | sed 's/%//'
+          register: disk_usage
+          failed_when: disk_usage.stdout | int > 80
+          changed_when: false
+          
+        - name: "Check memory availability"
+          shell: free | grep Mem | awk '{print ($3/$2) * 100}' | cut -d. -f1
+          register: memory_usage
+          failed_when: memory_usage.stdout | int > 90
+          changed_when: false
+          
+        - name: "Verify Docker is running"
+          systemd:
+            name: docker
+            state: started
+          check_mode: yes
+          register: docker_status
+          
+        - name: "Check if previous deployment exists"
+          stat:
+            path: /opt/app/current
+          register: current_deployment
+          
+        - name: "Create deployment backup"
+          when: current_deployment.stat.exists
+          command: >
+            rsync -a /opt/app/current/ /opt/app/backup-{{ ansible_date_time.epoch }}/
+          args:
+            creates: /opt/app/backup-{{ ansible_date_time.epoch }}
+            
+    - name: "📊 Collect Metrics Before Deployment"
+      uri:
+        url: "http://localhost:9090/api/v1/query?query=up"
+        method: GET
+        return_content: yes
+      register: pre_deployment_metrics
+      delegate_to: localhost
+      run_once: true
+      
+    - name: "🔔 Send Deployment Start Notification"
+      slack:
+        token: "{{ vault_slack_token }}"
+        msg: |
+          🚀 Deployment Started
+          Environment: {{ environment }}
+          Version: {{ app_version }}
+          Strategy: {{ deployment_strategy }}
+          Host: {{ inventory_hostname }}
+        channel: "#deployments"
+      delegate_to: localhost
+      run_once: true
+      
+  tasks:
+    - name: "🎯 Execute Deployment Strategy"
+      block:
+        # BLUE-GREEN DEPLOYMENT
+        - name: "💙 Blue-Green Deployment"
+          when: deployment_strategy == 'blue_green'
+          block:
+            - name: "Determine current color"
+              shell: readlink /opt/app/current | grep -o 'blue\|green'
+              register: current_color
+              failed_when: false
+              changed_when: false
+              
+            - name: "Set new color"
+              set_fact:
+                new_color: "{{ 'green' if current_color.stdout == 'blue' else 'blue' }}"
+                old_color: "{{ current_color.stdout | default('blue') }}"
+                
+            - name: "Deploy to {{ new_color }} environment"
+              docker_container:
+                name: "app-{{ new_color }}"
+                image: "myapp:{{ app_version }}"
+                state: started
+                restart_policy: unless-stopped
+                ports:
+                  - "{{ '8081' if new_color == 'green' else '8080' }}:3000"
+                env:
+                  NODE_ENV: "{{ environment }}"
+                  APP_VERSION: "{{ app_version }}"
+                  FEATURE_NEW_API: "{{ features.enable_new_api }}"
+                  FEATURE_CACHE: "{{ features.enable_caching }}"
+                healthcheck:
+                  test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+                  interval: 30s
+                  timeout: 10s
+                  retries: 3
+                  start_period: 40s
+                  
+            - name: "Wait for {{ new_color }} environment to be healthy"
+              uri:
+                url: "http://localhost:{{ '8081' if new_color == 'green' else '8080' }}/health"
+                method: GET
+                status_code: 200
+              register: health_check
+              until: health_check.status == 200
+              retries: "{{ health_check_retries }}"
+              delay: "{{ health_check_delay }}"
+              
+            - name: "Run smoke tests on {{ new_color }}"
+              uri:
+                url: "http://localhost:{{ '8081' if new_color == 'green' else '8080' }}{{ item }}"
+                method: GET
+                status_code: 200
+              loop:
+                - "/health"
+                - "/api/status"
+                - "/api/version"
+              register: smoke_tests
+              
+            - name: "Switch traffic to {{ new_color }}"
+              file:
+                src: "/opt/app/{{ new_color }}"
+                dest: /opt/app/current
+                state: link
+                force: yes
+              notify: reload nginx
+              
+            - name: "Wait for nginx reload"
+              pause:
+                seconds: 5
+                
+            - name: "Verify traffic switch"
+              uri:
+                url: "http://{{ inventory_hostname }}/health"
+                method: GET
+                status_code: 200
+              register: traffic_check
+              until: traffic_check.status == 200
+              retries: 10
+              delay: 3
+              
+            - name: "Monitor new deployment"
+              pause:
+                seconds: 30
+                prompt: "Monitoring new deployment for 30 seconds..."
+                
+            - name: "Stop old {{ old_color }} environment"
+              docker_container:
+                name: "app-{{ old_color }}"
+                state: stopped
+              when: traffic_check is succeeded
+              
+        # CANARY DEPLOYMENT
+        - name: "🐤 Canary Deployment"
+          when: deployment_strategy == 'canary'
+          block:
+            - name: "Deploy canary instance"
+              docker_container:
+                name: app-canary
+                image: "myapp:{{ app_version }}"
+                state: started
+                ports:
+                  - "8082:3000"
+                env:
+                  NODE_ENV: "{{ environment }}"
+                  CANARY: "true"
+                  
+            - name: "Configure nginx for canary ({{ canary_percentage }}%)"
+              template:
+                src: templates/nginx-canary.conf.j2
+                dest: /etc/nginx/conf.d/canary.conf
+              vars:
+                canary_weight: "{{ canary_percentage }}"
+              notify: reload nginx
+              
+            - name: "Monitor canary metrics"
+              uri:
+                url: "http://localhost:9090/api/v1/query?query=rate(http_requests_total{instance='canary'}[5m])"
+                method: GET
+              register: canary_metrics
+              until: canary_metrics.status == 200
+              retries: 6
+              delay: 10
+              
+            - name: "Analyze canary error rate"
+              set_fact:
+                canary_error_rate: "{{ canary_metrics.json.data.result[0].value[1] | float }}"
+              when: canary_metrics.json.data.result | length > 0
+              
+            - name: "Decision: Promote or rollback canary"
+              set_fact:
+                promote_canary: "{{ canary_error_rate | default(0) | float < 1.0 }}"
+                
+            - name: "Promote canary to full deployment"
+              when: promote_canary
+              block:
+                - name: "Scale up new version"
+                  docker_container:
+                    name: "app-{{ item }}"
+                    image: "myapp:{{ app_version }}"
+                    state: started
+                  loop: "{{ range(1, 4) | list }}"
+                  
+                - name: "Remove canary weight from nginx"
+                  file:
+                    path: /etc/nginx/conf.d/canary.conf
+                    state: absent
+                  notify: reload nginx
+                  
+                - name: "Scale down old version"
+                  docker_container:
+                    name: "app-old-{{ item }}"
+                    state: stopped
+                  loop: "{{ range(1, 4) | list }}"
+                  
+        # ROLLING DEPLOYMENT
+        - name: "🔄 Rolling Update"
+          when: deployment_strategy == 'rolling'
+          block:
+            - name: "Pull new image"
+              docker_image:
+                name: "myapp:{{ app_version }}"
+                source: pull
+                
+            - name: "Update container"
+              docker_container:
+                name: app
+                image: "myapp:{{ app_version }}"
+                state: started
+                restart: yes
+                
+            - name: "Wait for container health"
+              uri:
+                url: "http://localhost:8080/health"
+                status_code: 200
+              register: result
+              until: result.status == 200
+              retries: 20
+              delay: 5
+              
+      rescue:
+        - name: "🚨 Deployment Failed - Initiating Rollback"
+          debug:
+            msg: "Deployment failed on {{ inventory_hostname }}. Starting rollback procedure..."
+            
+        - name: "Rollback to previous version"
+          when: rollback_on_failure
+          block:
+            - name: "Switch back to old color"
+              file:
+                src: "/opt/app/{{ old_color }}"
+                dest: /opt/app/current
+                state: link
+                force: yes
+              notify: reload nginx
+              
+            - name: "Start old container"
+              docker_container:
+                name: "app-{{ old_color }}"
+                state: started
+                
+            - name: "Stop failed new container"
+              docker_container:
+                name: "app-{{ new_color }}"
+                state: stopped
+                
+            - name: "Verify rollback"
+              uri:
+                url: "http://{{ inventory_hostname }}/health"
+                status_code: 200
+              register: rollback_check
+              until: rollback_check.status == 200
+              retries: 10
+              delay: 3
+              
+        - name: "Send rollback notification"
+          slack:
+            token: "{{ vault_slack_token }}"
+            msg: |
+              ⚠️ ROLLBACK EXECUTED
+              Host: {{ inventory_hostname }}
+              Reason: Deployment failed health checks
+              Status: {{ 'SUCCESS' if rollback_check is succeeded else 'FAILED' }}
+            channel: "#deployments"
+          delegate_to: localhost
+          
+        - name: "Fail playbook after rollback"
+          fail:
+            msg: "Deployment failed and rollback was executed"
+            
+  post_tasks:
+    - name: "🧪 Post-Deployment Tests"
+      block:
+        - name: "Run integration tests"
+          uri:
+            url: "http://{{ inventory_hostname }}/api/test/{{ item }}"
+            method: GET
+            status_code: 200
+          loop:
+            - database
+            - cache
+            - external-api
+          register: integration_tests
+          
+        - name: "Verify all endpoints"
+          uri:
+            url: "http://{{ inventory_hostname }}{{ item }}"
+            method: GET
+            status_code: 200
+          loop:
+            - "/health"
+            - "/metrics"
+            - "/api/status"
+            
+        - name: "Check resource usage"
+          shell: |
+            echo "CPU: $(top -bn1 | grep 'Cpu(s)' | awk '{print $2}')"
+            echo "Memory: $(free -h | grep Mem | awk '{print $3 "/" $2}')"
+            echo "Disk: $(df -h / | tail -1 | awk '{print $5}')"
+          register: resource_usage
+          
+        - name: "Collect deployment metrics"
+          uri:
+            url: "http://localhost:9090/api/v1/query?query={{ item }}"
+            method: GET
+          loop:
+            - "up{job='app'}"
+            - "http_requests_total"
+            - "http_request_duration_seconds"
+          register: post_deployment_metrics
+          delegate_to: localhost
+          run_once: true
+          
+    - name: "📝 Generate Deployment Report"
+      template:
+        src: templates/deployment-report.md.j2
+        dest: "/var/log/deployments/{{ ansible_date_time.epoch }}-report.md"
+      vars:
+        deployment_start: "{{ ansible_date_time.iso8601 }}"
+        deployment_version: "{{ app_version }}"
+        deployment_host: "{{ inventory_hostname }}"
+        deployment_status: "{{ 'SUCCESS' if ansible_failed_task is not defined else 'FAILED' }}"
+      delegate_to: localhost
+      run_once: true
+      
+    - name: "✅ Send Success Notification"
+      when: ansible_failed_task is not defined
+      slack:
+        token: "{{ vault_slack_token }}"
+        msg: |
+          ✅ Deployment Successful
+          Environment: {{ environment }}
+          Version: {{ app_version }}
+          Host: {{ inventory_hostname }}
+          Duration: {{ (ansible_date_time.epoch | int) - (deployment_start_time | int) }}s
+          
+          Tests Passed:
+          - Health Checks: ✅
+          - Smoke Tests: ✅
+          - Integration Tests: ✅
+          
+          Access: https://{{ inventory_hostname }}
+        channel: "#deployments"
+      delegate_to: localhost
+      
+    - name: "🎉 Deployment Complete"
+      debug:
+        msg:
+          - "╔═══════════════════════════════════════════════════╗"
+          - "║     ✅ DEPLOYMENT COMPLETED SUCCESSFULLY          ║"
+          - "╠═══════════════════════════════════════════════════╣"
+          - "║  Environment: {{ environment | upper }}"
+          - "║  Version: {{ app_version }}"
+          - "║  Strategy: {{ deployment_strategy }}"
+          - "║  Host: {{ inventory_hostname }}"
+          - "║  URL: https://{{ inventory_hostname }}"
+          - "╚═══════════════════════════════════════════════════╝"
+          
+  handlers:
+    - name: reload nginx
+      systemd:
+        name: nginx
+        state: reloaded
+        
+    - name: restart app
+      docker_container:
+        name: app
+        state: started
+        restart: yes
+
+################################################################################
+# 🔧 UTILITY PLAYBOOKS
+################################################################################
+
+- name: "🔄 Database Migration"
+  hosts: database_primary
+  become: true
+  tasks:
+    - name: "Backup database before migration"
+      postgresql_db:
+        name: "{{ config.database.name }}"
+        state: dump
+        target: "/backup/pre-migration-{{ ansible_date_time.epoch }}.sql"
+        
+    - name: "Run migrations"
+      command: >
+        docker exec app-primary
+        npm run migrate:up
+      register: migration_result
+      
+    - name: "Verify migration"
+      postgresql_query:
+        db: "{{ config.database.name }}"
+        query: "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"
+      register: current_version
+      
+- name: "🧹 Cleanup Old Deployments"
+  hosts: web_tier
+  tasks:
+    - name: "Find old backup directories"
+      find:
+        paths: /opt/app
+        patterns: "backup-*"
+        file_type: directory
+        age: "7d"
+      register: old_backups
+      
+    - name: "Remove old backups"
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_backups.files }}"
+      when: old_backups.matched > 5
+
+- name: "📊 Performance Testing"
+  hosts: localhost
+  tasks:
+    - name: "Run load test"
+      command: >
+        ab -n 10000 -c 100
+        http://{{ groups['web_tier'][0] }}/
+      register: load_test
+      
+    - name: "Analyze results"
+      debug:
+        msg: "{{ load_test.stdout_lines }}"
