@@ -1,0 +1,744 @@
+---
+################################################################################
+#                                                                              #
+#  🚀 ENTERPRISE INFRASTRUCTURE AUTOMATION PLATFORM                           #
+#  Author: DevOps Engineer                                                     #
+#  Purpose: Complete infrastructure provisioning with advanced features       #
+#  Architecture: Multi-tier, highly available, cloud-agnostic                 #
+#                                                                              #
+################################################################################
+
+################################################################################
+# 📋 INFRASTRUCTURE CONFIGURATION - EDIT ALL SETTINGS HERE
+################################################################################
+
+infrastructure_config:
+  # 🌍 Global Settings
+  global:
+    environment: "production"           # production, staging, development
+    region: "eu-west-1"
+    domain: "example.com"
+    admin_email: "devops@example.com"
+    timezone: "Europe/Warsaw"
+    enable_monitoring: true
+    enable_logging: true
+    enable_backup: true
+    enable_auto_scaling: false
+    enable_disaster_recovery: true
+    
+  # 🔐 Security Configuration
+  security:
+    ssh_port: 2222
+    enable_firewall: true
+    enable_fail2ban: true
+    enable_selinux: true
+    password_policy:
+      min_length: 16
+      complexity: true
+      max_age_days: 90
+    ssl_certificate:
+      provider: "letsencrypt"           # letsencrypt, custom, self-signed
+      email: "ssl@example.com"
+      auto_renewal: true
+    hardening:
+      disable_root_login: true
+      disable_password_auth: true
+      enable_2fa: true
+      allowed_users: ["devops", "admin"]
+      
+  # 🖥️ Compute Infrastructure
+  compute:
+    web_servers:
+      count: 3
+      instance_type: "t3.medium"
+      os: "ubuntu-22.04"
+      cpu: 2
+      ram_gb: 4
+      disk_gb: 50
+      auto_scaling:
+        min: 2
+        max: 10
+        cpu_threshold: 70
+        
+    app_servers:
+      count: 2
+      instance_type: "t3.large"
+      os: "ubuntu-22.04"
+      cpu: 4
+      ram_gb: 8
+      disk_gb: 100
+      
+    database_servers:
+      count: 2                           # Primary + Replica
+      instance_type: "t3.xlarge"
+      os: "ubuntu-22.04"
+      cpu: 8
+      ram_gb: 16
+      disk_gb: 500
+      enable_replication: true
+      backup_retention_days: 30
+      
+    cache_servers:
+      count: 2
+      instance_type: "t3.small"
+      os: "ubuntu-22.04"
+      cpu: 2
+      ram_gb: 2
+      disk_gb: 20
+      
+  # 🌐 Network Configuration
+  network:
+    vpc_cidr: "10.0.0.0/16"
+    subnets:
+      public:
+        - name: "public-subnet-1"
+          cidr: "10.0.1.0/24"
+          az: "a"
+        - name: "public-subnet-2"
+          cidr: "10.0.2.0/24"
+          az: "b"
+      private:
+        - name: "private-subnet-1"
+          cidr: "10.0.10.0/24"
+          az: "a"
+        - name: "private-subnet-2"
+          cidr: "10.0.11.0/24"
+          az: "b"
+      database:
+        - name: "db-subnet-1"
+          cidr: "10.0.20.0/24"
+          az: "a"
+        - name: "db-subnet-2"
+          cidr: "10.0.21.0/24"
+          az: "b"
+    
+    load_balancer:
+      type: "application"                # application, network
+      scheme: "internet-facing"
+      enable_ssl: true
+      ssl_policy: "ELBSecurityPolicy-TLS-1-2-2017-01"
+      health_check:
+        protocol: "HTTP"
+        path: "/health"
+        interval: 30
+        timeout: 5
+        healthy_threshold: 2
+        unhealthy_threshold: 3
+        
+    cdn:
+      enabled: true
+      provider: "cloudflare"             # cloudflare, cloudfront, akamai
+      cache_ttl: 3600
+      
+  # 🗄️ Database Configuration
+  database:
+    type: "postgresql"                   # postgresql, mysql, mongodb
+    version: "15"
+    port: 5432
+    name: "production_db"
+    max_connections: 200
+    shared_buffers: "2GB"
+    effective_cache_size: "6GB"
+    maintenance_work_mem: "512MB"
+    replication:
+      enabled: true
+      mode: "streaming"                  # streaming, logical
+      lag_threshold_mb: 100
+    backup:
+      enabled: true
+      schedule: "0 2 * * *"              # Daily at 2 AM
+      retention_days: 30
+      compression: true
+      encryption: true
+      
+  # 🔄 Cache Configuration
+  cache:
+    type: "redis"                        # redis, memcached
+    version: "7.0"
+    port: 6379
+    max_memory: "2gb"
+    eviction_policy: "allkeys-lru"
+    persistence: true
+    cluster_mode: true
+    
+  # 📦 Application Stack
+  application:
+    web_server:
+      type: "nginx"                      # nginx, apache, caddy
+      version: "latest"
+      worker_processes: "auto"
+      worker_connections: 2048
+      keepalive_timeout: 65
+      client_max_body_size: "100M"
+      gzip_enabled: true
+      
+    app_runtime:
+      type: "nodejs"                     # nodejs, python, java, go
+      version: "20"
+      package_manager: "npm"
+      process_manager: "pm2"
+      instances: 4
+      
+    reverse_proxy:
+      enabled: true
+      rate_limiting:
+        enabled: true
+        requests_per_second: 100
+      cors:
+        enabled: true
+        allowed_origins: ["*"]
+        
+  # 📊 Monitoring & Logging
+  monitoring:
+    prometheus:
+      enabled: true
+      retention_days: 15
+      scrape_interval: "15s"
+      
+    grafana:
+      enabled: true
+      admin_password: "{{ vault_grafana_password }}"
+      
+    alertmanager:
+      enabled: true
+      slack_webhook: "{{ vault_slack_webhook }}"
+      pagerduty_key: "{{ vault_pagerduty_key }}"
+      
+    exporters:
+      - node_exporter
+      - postgres_exporter
+      - redis_exporter
+      - nginx_exporter
+      
+  logging:
+    elk_stack:
+      enabled: true
+      elasticsearch:
+        version: "8.11"
+        heap_size: "2g"
+        replicas: 2
+      logstash:
+        version: "8.11"
+        workers: 4
+      kibana:
+        version: "8.11"
+        
+    retention:
+      application_logs: 30
+      system_logs: 60
+      audit_logs: 365
+      
+  # 📦 Container Orchestration
+  containers:
+    docker:
+      enabled: true
+      version: "24.0"
+      
+    kubernetes:
+      enabled: false
+      distribution: "k3s"                # k3s, rke2, kubeadm
+      version: "1.28"
+      nodes:
+        master_count: 3
+        worker_count: 5
+        
+  # 🔄 CI/CD Configuration
+  cicd:
+    jenkins:
+      enabled: true
+      version: "lts"
+      agents: 3
+      
+    gitlab_runner:
+      enabled: false
+      concurrent: 4
+      
+    argocd:
+      enabled: false
+      version: "latest"
+      
+  # 💾 Backup Strategy
+  backup:
+    strategy: "3-2-1"                    # 3 copies, 2 media types, 1 offsite
+    destinations:
+      - type: "s3"
+        bucket: "backups-production"
+        region: "eu-west-1"
+      - type: "local"
+        path: "/backup"
+    schedule:
+      full: "0 1 * * 0"                  # Weekly on Sunday
+      incremental: "0 1 * * 1-6"         # Daily Mon-Sat
+      
+  # 🔐 Secrets Management
+  secrets:
+    vault:
+      enabled: true
+      version: "1.15"
+      storage_backend: "consul"
+      auto_unseal: true
+
+################################################################################
+# 🎭 PLAYBOOK EXECUTION
+################################################################################
+
+- name: "🚀 Enterprise Infrastructure Deployment"
+  hosts: localhost
+  gather_facts: true
+  become: true
+  
+  vars:
+    config: "{{ infrastructure_config }}"
+    deployment_id: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    
+  pre_tasks:
+    - name: "📋 Display Infrastructure Configuration"
+      debug:
+        msg:
+          - "Environment: {{ config.global.environment }}"
+          - "Region: {{ config.global.region }}"
+          - "Domain: {{ config.global.domain }}"
+          - "Deployment ID: {{ deployment_id }}"
+          
+    - name: "✅ Validate Configuration"
+      assert:
+        that:
+          - config.global.environment in ['production', 'staging', 'development']
+          - config.compute.web_servers.count >= 1
+          - config.database.type in ['postgresql', 'mysql', 'mongodb']
+        fail_msg: "Invalid configuration detected!"
+        
+    - name: "📦 Install Required Packages"
+      apt:
+        name:
+          - python3-pip
+          - git
+          - curl
+          - wget
+          - htop
+          - vim
+        state: present
+        update_cache: yes
+        
+  roles:
+    - role: prerequisites
+      tags: [prerequisites]
+      
+    - role: security_hardening
+      tags: [security]
+      when: config.security.enable_firewall
+      
+    - role: network_setup
+      tags: [network]
+      
+    - role: compute_provisioning
+      tags: [compute]
+      
+    - role: database_cluster
+      tags: [database]
+      when: config.database.type is defined
+      
+    - role: cache_cluster
+      tags: [cache]
+      when: config.cache.type is defined
+      
+    - role: load_balancer
+      tags: [lb]
+      
+    - role: web_server
+      tags: [web]
+      
+    - role: application_deployment
+      tags: [app]
+      
+    - role: monitoring_stack
+      tags: [monitoring]
+      when: config.global.enable_monitoring
+      
+    - role: logging_stack
+      tags: [logging]
+      when: config.global.enable_logging
+      
+    - role: backup_solution
+      tags: [backup]
+      when: config.global.enable_backup
+      
+    - role: container_runtime
+      tags: [containers]
+      when: config.containers.docker.enabled
+      
+    - role: cicd_pipeline
+      tags: [cicd]
+      
+    - role: secrets_management
+      tags: [secrets]
+      when: config.secrets.vault.enabled
+      
+  post_tasks:
+    - name: "🎉 Deployment Complete"
+      debug:
+        msg:
+          - "==================================================="
+          - "✅ Infrastructure Deployment Completed Successfully"
+          - "==================================================="
+          - "Environment: {{ config.global.environment }}"
+          - "Deployment ID: {{ deployment_id }}"
+          - "Web Servers: {{ config.compute.web_servers.count }}"
+          - "App Servers: {{ config.compute.app_servers.count }}"
+          - "Database Servers: {{ config.compute.database_servers.count }}"
+          - "==================================================="
+          - "📊 Monitoring: http://grafana.{{ config.global.domain }}"
+          - "📝 Logs: http://kibana.{{ config.global.domain }}"
+          - "🔐 Vault: http://vault.{{ config.global.domain }}"
+          - "==================================================="
+          
+    - name: "📧 Send Deployment Notification"
+      mail:
+        host: localhost
+        port: 25
+        to: "{{ config.global.admin_email }}"
+        subject: "[SUCCESS] Infrastructure Deployment - {{ deployment_id }}"
+        body: |
+          Infrastructure deployment completed successfully!
+          
+          Environment: {{ config.global.environment }}
+          Deployment ID: {{ deployment_id }}
+          Timestamp: {{ ansible_date_time.iso8601 }}
+          
+          Summary:
+          - Web Servers: {{ config.compute.web_servers.count }}
+          - App Servers: {{ config.compute.app_servers.count }}
+          - Database Servers: {{ config.compute.database_servers.count }}
+          - Monitoring: Enabled
+          - Backup: Enabled
+          
+          Access URLs:
+          - Grafana: http://grafana.{{ config.global.domain }}
+          - Kibana: http://kibana.{{ config.global.domain }}
+          - Vault: http://vault.{{ config.global.domain }}
+      when: config.global.admin_email is defined
+
+################################################################################
+# 🎯 ROLE: Prerequisites
+################################################################################
+
+- name: "🔧 Setup Prerequisites"
+  hosts: all
+  become: true
+  tasks:
+    - name: "Update APT Cache"
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+        
+    - name: "Upgrade All Packages"
+      apt:
+        upgrade: dist
+        autoremove: yes
+        
+    - name: "Install Base Packages"
+      apt:
+        name:
+          - build-essential
+          - software-properties-common
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+          - lsb-release
+        state: present
+        
+    - name: "Configure System Timezone"
+      timezone:
+        name: "{{ config.global.timezone }}"
+        
+    - name: "Configure NTP"
+      apt:
+        name: chrony
+        state: present
+      notify: restart chrony
+
+################################################################################
+# 🔐 ROLE: Security Hardening
+################################################################################
+
+- name: "🔒 Security Hardening"
+  hosts: all
+  become: true
+  tasks:
+    - name: "Configure SSH"
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^#?Port', line: 'Port {{ config.security.ssh_port }}' }
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PubkeyAuthentication', line: 'PubkeyAuthentication yes' }
+        - { regexp: '^#?PermitEmptyPasswords', line: 'PermitEmptyPasswords no' }
+        - { regexp: '^#?X11Forwarding', line: 'X11Forwarding no' }
+      notify: restart sshd
+      
+    - name: "Install and Configure UFW"
+      when: config.security.enable_firewall
+      block:
+        - name: "Install UFW"
+          apt:
+            name: ufw
+            state: present
+            
+        - name: "Allow SSH"
+          ufw:
+            rule: allow
+            port: "{{ config.security.ssh_port }}"
+            proto: tcp
+            
+        - name: "Allow HTTP/HTTPS"
+          ufw:
+            rule: allow
+            port: "{{ item }}"
+            proto: tcp
+          loop:
+            - "80"
+            - "443"
+            
+        - name: "Enable UFW"
+          ufw:
+            state: enabled
+            policy: deny
+            
+    - name: "Install and Configure Fail2ban"
+      when: config.security.enable_fail2ban
+      block:
+        - name: "Install Fail2ban"
+          apt:
+            name: fail2ban
+            state: present
+            
+        - name: "Configure Fail2ban for SSH"
+          copy:
+            dest: /etc/fail2ban/jail.local
+            content: |
+              [DEFAULT]
+              bantime = 3600
+              findtime = 600
+              maxretry = 5
+              
+              [sshd]
+              enabled = true
+              port = {{ config.security.ssh_port }}
+              logpath = %(sshd_log)s
+              backend = %(sshd_backend)s
+          notify: restart fail2ban
+          
+    - name: "Install Security Tools"
+      apt:
+        name:
+          - aide
+          - rkhunter
+          - lynis
+          - auditd
+        state: present
+
+################################################################################
+# 🗄️ ROLE: Database Cluster
+################################################################################
+
+- name: "🗄️ Setup Database Cluster"
+  hosts: database
+  become: true
+  tasks:
+    - name: "Install PostgreSQL"
+      when: config.database.type == 'postgresql'
+      block:
+        - name: "Add PostgreSQL Repository"
+          apt_repository:
+            repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+            state: present
+            
+        - name: "Import PostgreSQL GPG Key"
+          apt_key:
+            url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+            state: present
+            
+        - name: "Install PostgreSQL {{ config.database.version }}"
+          apt:
+            name:
+              - "postgresql-{{ config.database.version }}"
+              - "postgresql-contrib-{{ config.database.version }}"
+              - python3-psycopg2
+            state: present
+            update_cache: yes
+            
+        - name: "Configure PostgreSQL"
+          lineinfile:
+            path: "/etc/postgresql/{{ config.database.version }}/main/postgresql.conf"
+            regexp: "{{ item.regexp }}"
+            line: "{{ item.line }}"
+          loop:
+            - { regexp: '^#?max_connections', line: 'max_connections = {{ config.database.max_connections }}' }
+            - { regexp: '^#?shared_buffers', line: 'shared_buffers = {{ config.database.shared_buffers }}' }
+            - { regexp: '^#?effective_cache_size', line: 'effective_cache_size = {{ config.database.effective_cache_size }}' }
+            - { regexp: '^#?maintenance_work_mem', line: 'maintenance_work_mem = {{ config.database.maintenance_work_mem }}' }
+          notify: restart postgresql
+          
+        - name: "Setup Database Replication"
+          when: config.database.replication.enabled and inventory_hostname in groups['database_replicas']
+          block:
+            - name: "Configure Replication User"
+              postgresql_user:
+                name: replicator
+                password: "{{ vault_replication_password }}"
+                role_attr_flags: REPLICATION
+              delegate_to: "{{ groups['database_primary'][0] }}"
+              
+            - name: "Configure pg_hba.conf for Replication"
+              lineinfile:
+                path: "/etc/postgresql/{{ config.database.version }}/main/pg_hba.conf"
+                line: "host replication replicator {{ item }} md5"
+              loop: "{{ groups['database_replicas'] | map('extract', hostvars, 'ansible_default_ipv4') | map(attribute='address') | list }}"
+              delegate_to: "{{ groups['database_primary'][0] }}"
+              notify: restart postgresql
+
+################################################################################
+# 📊 ROLE: Monitoring Stack
+################################################################################
+
+- name: "📊 Setup Monitoring Stack"
+  hosts: monitoring
+  become: true
+  tasks:
+    - name: "Install Prometheus"
+      when: config.monitoring.prometheus.enabled
+      block:
+        - name: "Create Prometheus User"
+          user:
+            name: prometheus
+            system: yes
+            shell: /bin/false
+            
+        - name: "Download Prometheus"
+          get_url:
+            url: "https://github.com/prometheus/prometheus/releases/download/v2.48.0/prometheus-2.48.0.linux-amd64.tar.gz"
+            dest: /tmp/prometheus.tar.gz
+            
+        - name: "Extract Prometheus"
+          unarchive:
+            src: /tmp/prometheus.tar.gz
+            dest: /opt/
+            remote_src: yes
+            creates: /opt/prometheus-2.48.0.linux-amd64
+            
+        - name: "Create Prometheus Directories"
+          file:
+            path: "{{ item }}"
+            state: directory
+            owner: prometheus
+            group: prometheus
+          loop:
+            - /etc/prometheus
+            - /var/lib/prometheus
+            
+        - name: "Configure Prometheus"
+          copy:
+            dest: /etc/prometheus/prometheus.yml
+            content: |
+              global:
+                scrape_interval: {{ config.monitoring.prometheus.scrape_interval }}
+                evaluation_interval: 15s
+                
+              scrape_configs:
+                - job_name: 'prometheus'
+                  static_configs:
+                    - targets: ['localhost:9090']
+                    
+                - job_name: 'node_exporter'
+                  static_configs:
+                    - targets: {{ groups['all'] | map('extract', hostvars, 'ansible_default_ipv4') | map(attribute='address') | map('regex_replace', '^(.*)$', '\\1:9100') | list | to_json }}
+                    
+                - job_name: 'postgresql'
+                  static_configs:
+                    - targets: {{ groups['database'] | map('extract', hostvars, 'ansible_default_ipv4') | map(attribute='address') | map('regex_replace', '^(.*)$', '\\1:9187') | list | to_json }}
+          notify: restart prometheus
+          
+        - name: "Create Prometheus Systemd Service"
+          copy:
+            dest: /etc/systemd/system/prometheus.service
+            content: |
+              [Unit]
+              Description=Prometheus
+              Wants=network-online.target
+              After=network-online.target
+              
+              [Service]
+              User=prometheus
+              Group=prometheus
+              Type=simple
+              ExecStart=/opt/prometheus-2.48.0.linux-amd64/prometheus \
+                --config.file=/etc/prometheus/prometheus.yml \
+                --storage.tsdb.path=/var/lib/prometheus \
+                --storage.tsdb.retention.time={{ config.monitoring.prometheus.retention_days }}d
+                
+              [Install]
+              WantedBy=multi-user.target
+          notify: reload systemd
+          
+    - name: "Install Grafana"
+      when: config.monitoring.grafana.enabled
+      block:
+        - name: "Add Grafana Repository"
+          apt_repository:
+            repo: "deb https://packages.grafana.com/oss/deb stable main"
+            state: present
+            
+        - name: "Import Grafana GPG Key"
+          apt_key:
+            url: https://packages.grafana.com/gpg.key
+            state: present
+            
+        - name: "Install Grafana"
+          apt:
+            name: grafana
+            state: present
+            update_cache: yes
+            
+        - name: "Start Grafana"
+          systemd:
+            name: grafana-server
+            state: started
+            enabled: yes
+
+################################################################################
+# 🔄 HANDLERS
+################################################################################
+
+  handlers:
+    - name: restart sshd
+      systemd:
+        name: sshd
+        state: restarted
+        
+    - name: restart chrony
+      systemd:
+        name: chrony
+        state: restarted
+        
+    - name: restart fail2ban
+      systemd:
+        name: fail2ban
+        state: restarted
+        
+    - name: restart postgresql
+      systemd:
+        name: postgresql
+        state: restarted
+        
+    - name: restart prometheus
+      systemd:
+        name: prometheus
+        state: restarted
+        daemon_reload: yes
+        
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
