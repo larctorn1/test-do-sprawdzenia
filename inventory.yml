@@ -1,0 +1,255 @@
+---
+################################################################################
+# 🎯 DYNAMIC INVENTORY CONFIGURATION
+# Supports: AWS, Azure, GCP, VMware, OpenStack, Bare Metal
+################################################################################
+
+all:
+  vars:
+    # Global variables for all hosts
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    
+    # Custom facts
+    datacenter: "eu-west-1"
+    cost_center: "engineering"
+    managed_by: "ansible"
+    
+  children:
+    # Environment grouping
+    production:
+      vars:
+        environment: production
+        log_level: warn
+        backup_enabled: true
+      children:
+        - production_web
+        - production_app
+        - production_database
+        - production_cache
+        
+    staging:
+      vars:
+        environment: staging
+        log_level: info
+        backup_enabled: true
+      children:
+        - staging_web
+        - staging_app
+        - staging_database
+        
+    development:
+      vars:
+        environment: development
+        log_level: debug
+        backup_enabled: false
+      children:
+        - dev_web
+        - dev_app
+        
+    # Infrastructure tier grouping
+    web_tier:
+      vars:
+        server_role: web
+        nginx_version: latest
+      children:
+        - production_web
+        - staging_web
+        - dev_web
+        
+    app_tier:
+      vars:
+        server_role: application
+        nodejs_version: "20"
+      children:
+        - production_app
+        - staging_app
+        - dev_app
+        
+    database_tier:
+      vars:
+        server_role: database
+        postgres_version: "15"
+      children:
+        - production_database
+        - staging_database
+        - database_primary
+        - database_replicas
+        
+    cache_tier:
+      vars:
+        server_role: cache
+        redis_version: "7.0"
+      children:
+        - production_cache
+        
+    # Functional grouping
+    monitoring:
+      hosts:
+        monitoring-01:
+          ansible_host: 10.0.50.10
+          prometheus_port: 9090
+          grafana_port: 3000
+          alertmanager_port: 9093
+          
+    logging:
+      hosts:
+        logging-01:
+          ansible_host: 10.0.50.20
+          elasticsearch_port: 9200
+          kibana_port: 5601
+          logstash_port: 5044
+          
+    backup:
+      hosts:
+        backup-01:
+          ansible_host: 10.0.50.30
+          backup_retention_days: 30
+          
+    bastion:
+      hosts:
+        bastion-01:
+          ansible_host: 10.0.1.10
+          ansible_port: 2222
+          
+    # Production infrastructure
+    production_web:
+      hosts:
+        web-prod-01:
+          ansible_host: 10.0.1.11
+          server_id: 1
+        web-prod-02:
+          ansible_host: 10.0.1.12
+          server_id: 2
+        web-prod-03:
+          ansible_host: 10.0.1.13
+          server_id: 3
+          
+    production_app:
+      hosts:
+        app-prod-01:
+          ansible_host: 10.0.10.11
+          app_port: 3000
+        app-prod-02:
+          ansible_host: 10.0.10.12
+          app_port: 3000
+          
+    production_database:
+      children:
+        - database_primary
+        - database_replicas
+        
+    database_primary:
+      hosts:
+        db-prod-primary:
+          ansible_host: 10.0.20.11
+          postgres_role: primary
+          postgres_port: 5432
+          
+    database_replicas:
+      hosts:
+        db-prod-replica-01:
+          ansible_host: 10.0.20.12
+          postgres_role: replica
+          postgres_upstream: db-prod-primary
+        db-prod-replica-02:
+          ansible_host: 10.0.20.13
+          postgres_role: replica
+          postgres_upstream: db-prod-primary
+          
+    production_cache:
+      hosts:
+        redis-prod-01:
+          ansible_host: 10.0.11.11
+          redis_role: master
+          redis_port: 6379
+        redis-prod-02:
+          ansible_host: 10.0.11.12
+          redis_role: slave
+          redis_master: redis-prod-01
+          
+    # Staging infrastructure
+    staging_web:
+      hosts:
+        web-staging-01:
+          ansible_host: 10.0.2.11
+          
+    staging_app:
+      hosts:
+        app-staging-01:
+          ansible_host: 10.0.12.11
+          
+    staging_database:
+      hosts:
+        db-staging-01:
+          ansible_host: 10.0.22.11
+          
+    # Development infrastructure
+    dev_web:
+      hosts:
+        web-dev-01:
+          ansible_host: 10.0.3.11
+          
+    dev_app:
+      hosts:
+        app-dev-01:
+          ansible_host: 10.0.13.11
+
+################################################################################
+# 🔌 DYNAMIC INVENTORY SCRIPTS
+################################################################################
+
+# Use with: ansible-playbook -i inventory.yml -i aws_ec2.yml playbook.yml
+
+# AWS EC2 Dynamic Inventory (aws_ec2.yml)
+# plugin: aws_ec2
+# regions:
+#   - eu-west-1
+#   - eu-west-2
+# filters:
+#   tag:Environment:
+#     - production
+#     - staging
+# keyed_groups:
+#   - key: tags.Environment
+#     prefix: env
+#   - key: tags.Role
+#     prefix: role
+# hostnames:
+#   - tag:Name
+
+################################################################################
+# 🏷️ HOST VARIABLES EXAMPLES
+################################################################################
+
+# You can create host_vars/web-prod-01.yml:
+# ---
+# nginx_worker_processes: 4
+# nginx_worker_connections: 2048
+# ssl_certificate: /etc/ssl/certs/example.com.crt
+# ssl_certificate_key: /etc/ssl/private/example.com.key
+# custom_nginx_configs:
+#   - name: rate_limiting
+#     content: |
+#       limit_req_zone $binary_remote_addr zone=mylimit:10m rate=10r/s;
+#       limit_req zone=mylimit burst=20 nodelay;
+
+################################################################################
+# 🎨 GROUP VARIABLES EXAMPLES
+################################################################################
+
+# You can create group_vars/production.yml:
+# ---
+# monitoring_enabled: true
+# backup_schedule: "0 2 * * *"
+# alerting_enabled: true
+# log_retention_days: 90
+# security_level: high
+# allowed_ssh_ips:
+#   - 10.0.0.0/8
+#   - 172.16.0.0/12
+# vault_secrets:
+#   database_password: "{{ vault_prod_db_password }}"
+#   api_key: "{{ vault_prod_api_key }}"
